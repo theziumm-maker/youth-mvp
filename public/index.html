@@ -103,7 +103,7 @@
     position:relative;width:100%;aspect-ratio:3/4;border-radius:20px;overflow:hidden;
     background:#14121F;margin-bottom:14px;
   }
-  .cam-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .cam-wrap video{width:100%;height:100%;object-fit:cover;transform:scale(-0.9,0.9)}
   .cam-wrap .guide{position:absolute;inset:0;pointer-events:none}
   .cam-hint{
     position:absolute;bottom:56px;left:0;right:0;text-align:center;
@@ -127,6 +127,11 @@
     transition:all .15s ease;
   }
   .cand-strip img.sel{border-color:var(--violet);opacity:1;transform:scale(1.06)}
+  .photo-frame{position:relative;border-radius:20px;overflow:hidden}
+  .photo-frame img{width:100%;display:block}
+  .line-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .legend{display:flex;gap:14px;justify-content:center;font-size:11.5px;color:var(--ink-soft);margin-top:8px}
+  .legend .sw{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
   .gates{
     position:absolute;bottom:12px;left:12px;right:12px;
     display:flex;gap:8px;justify-content:center;
@@ -427,7 +432,12 @@ function analyzeImageData(imgData){
   const meanL = sumL/n;
   const balance = Math.abs((sumLeft/Math.max(nLeft,1)) - (sumRight/Math.max(nRight,1)));
 
-  let lapSum=0, lapSum2=0, ln=0;
+  // 선명도: 라플라시안 분산 + 볼 영역 모공성 질감 비율
+  const inCheek = (x,y)=>{
+    const fx=x/W, fy=y/H;
+    return fy>0.53 && fy<0.70 && ((fx>0.22&&fx<0.40)||(fx>0.60&&fx<0.78));
+  };
+  let lapSum=0, lapSum2=0, ln=0, chN=0, chHigh=0;
   for(let y=1;y<gh-1;y++){
     for(let x=1;x<gw-1;x++){
       const px = x*2, py = y*2;
@@ -435,23 +445,19 @@ function analyzeImageData(imgData){
       const c = gray[y*gw+x];
       const lap = gray[(y-1)*gw+x] + gray[(y+1)*gw+x] + gray[y*gw+x-1] + gray[y*gw+x+1] - 4*c;
       lapSum+=lap; lapSum2+=lap*lap; ln++;
+      if(inCheek(px,py)){ chN++; if(Math.abs(lap) > 16) chHigh++; }
     }
   }
   const lapVar = ln>0 ? (lapSum2/ln - (lapSum/ln)**2) : 0;
+  const poreRatio = chN > 30 ? Math.round(chHigh/chN*1000)/10 : null; // 볼 영역 모공성 질감 %
 
   const rgStd = Math.sqrt(Math.max(0, sumRG2/n - (sumRG/n)**2));
   const rbStd = Math.sqrt(Math.max(0, sumRB2/n - (sumRB/n)**2));
 
   const bright = Math.round(Math.max(0, Math.min(100, 100 - Math.abs(meanL-130)*0.9 - balance*0.6)));
   const sharp = Math.round(Math.max(0, Math.min(100, (lapVar-20)/3.6)));
-  const tone = Math.round(Math.max(0, Math.min(100, 100 - (rgStd+rbStd)*1.4)));
-  const texture = Math.round(Math.max(0, Math.min(100, 100 - Math.sqrt(lapVar)*2.2 + sharp*0.25)));
 
-  const score = Math.round(Math.max(30, Math.min(98,
-    tone*0.35 + texture*0.30 + bright*0.20 + sharp*0.15
-  )));
-
-  return { score, bright, sharp, tone, texture,
+  return { bright, sharp, poreRatio,
            raw:{ meanL:Math.round(meanL), lapVar:Math.round(lapVar), balance:Math.round(balance) } };
 }
 
@@ -495,9 +501,46 @@ function analyzeAligned(srcCanvas, w, h, lms){
   ctx.drawImage(srcCanvas, 0, 0);
   ctx.setTransform(1,0,0,1,0,0);
 
+  // 얼굴 기준점을 정렬 좌표계로 변환해 저장 (0~1 비율)
+  // 눈이 항상 42% 높이에 고정되므로, 아래 기준점들의 높이 변화 = 처짐/리프팅 변화
+  const ca = Math.cos(angle), sa = Math.sin(angle);
+  const tf = lm => {
+    const dx = (1-lm.x)*w - p1.x, dy = lm.y*h - p1.y;
+    return {
+      x: ((dx*ca + dy*sa)*scale + d1.x) / S,
+      y: ((-dx*sa + dy*ca)*scale + d1.y) / S
+    };
+  };
+  const anchors = {
+    eye:   0.42,                                    // 정의상 고정
+    nose:  +tf(lms[2]).y.toFixed(4),                // 코밑
+    mouth: +(((tf(lms[61]).y + tf(lms[291]).y)/2)).toFixed(4), // 입꼬리 평균
+    chin:  +tf(lms[152]).y.toFixed(4)               // 턱끝
+  };
+
   const metrics = analyzeImageData(ctx.getImageData(0,0,S,S));
+  if(metrics) metrics.anchors = anchors;
   const dataUrl = cv.toDataURL('image/jpeg', 0.82);
   return { metrics, dataUrl };
+}
+
+/* 기준선 오버레이: 사진 위에 중심선 + 눈/코/입/턱 높이선을 그림 */
+function anchorsOverlay(sets){
+  // sets: [{a: anchors, color, dash, op}]
+  const lines = sets.filter(s=>s.a).map(s=>{
+    const st = `stroke="${s.color}" stroke-width="0.6" ${s.dash?'stroke-dasharray="1.5 1.5"':''} opacity="${s.op??0.9}"`;
+    return `
+      <line x1="8" x2="92" y1="${s.a.nose*100}" y2="${s.a.nose*100}" ${st}/>
+      <line x1="8" x2="92" y1="${s.a.mouth*100}" y2="${s.a.mouth*100}" ${st}/>
+      <line x1="12" x2="88" y1="${s.a.chin*100}" y2="${s.a.chin*100}" ${st}/>`;
+  }).join('');
+  if(!lines) return '';
+  return `<svg class="line-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <line x1="50" x2="50" y1="12" y2="92" stroke="rgba(255,255,255,.55)" stroke-width="0.5" stroke-dasharray="1 2"/>
+    <line x1="8" x2="92" y1="42" y2="42" stroke="rgba(255,255,255,.55)" stroke-width="0.5"/>
+    <text x="9" y="40.5" font-size="3.6" fill="rgba(255,255,255,.85)">눈</text>
+    ${lines}
+  </svg>`;
 }
 
 /* ---------- 라우팅 ---------- */
@@ -533,10 +576,7 @@ function render(){
 function renderHome(){
   const days = latestPerDay();
   const today = days[days.length-1];
-  const prev = days[days.length-2];
-  const delta = (today && prev) ? today.metrics.score - prev.metrics.score : null;
-  const deltaCls = delta===null?'flat':delta>0?'up':delta<0?'down':'flat';
-  const deltaTxt = delta===null?'첫 기록':delta>0?`+${delta} 전일 대비`:delta<0?`${delta} 전일 대비`:'± 0 전일 대비';
+  const isToday = today && today.dateKey === dateKey(Date.now());
 
   let streak = 0;
   if(days.length){
@@ -545,10 +585,6 @@ function renderHome(){
     const keys = new Set(days.map(d=>d.dateKey));
     while(keys.has(dateKey(cursor.getTime()))){ streak++; cursor = new Date(cursor.getTime()-oneDay); }
   }
-
-  const scoreVal = today ? today.metrics.score : null;
-  const circ = 2*Math.PI*62;
-  const dash = scoreVal ? circ*scoreVal/100 : 0;
 
   return `
     <div class="eyebrow">Youth</div>
@@ -562,22 +598,18 @@ function renderHome(){
       <button class="ib-close" onclick="dismissInstall()" aria-label="닫기">✕</button>
     </div>
 
-    <div class="card" style="text-align:center">
-      <div class="score-ring">
-        <svg width="150" height="150">
-          <circle cx="75" cy="75" r="62" stroke="var(--violet-soft)" stroke-width="11" fill="none"/>
-          <circle cx="75" cy="75" r="62" stroke="var(--violet)" stroke-width="11" fill="none"
-            stroke-linecap="round" stroke-dasharray="${dash} ${circ}"/>
-        </svg>
-        <div class="val">
-          <b>${scoreVal ?? '—'}</b><span>/100 종합 점수</span>
-        </div>
+    <div class="card">
+      ${today ? `
+      <div class="photo-frame" style="margin-bottom:12px">
+        <img src="${photoUrl(today.id)}" alt="${isToday?'오늘':fmtDate(today.ts)} 기록">
+        ${anchorsOverlay([{ a: today.metrics.anchors, color:'#8B7FF5' }])}
       </div>
-      <div class="delta ${deltaCls}">${today?deltaTxt:'아직 오늘 기록이 없어요'}</div>
-      <div style="height:14px"></div>
+      <p class="sub" style="text-align:center;margin-bottom:12px">
+        ${isToday ? '오늘의 기록 · 기준선은 얼굴의 현재 위치예요' : `마지막 기록 ${fmtFull(today.ts)} · 오늘 기록을 남겨보세요`}
+      </p>` : ''}
       <button class="btn" onclick="go('capture')">
         <svg width="18" height="18" viewBox="0 0 24 24" stroke="#fff" fill="none" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="4"/></svg>
-        3초 기록하기
+        ${isToday ? '다시 기록하기' : '3초 기록하기'}
       </button>
     </div>
 
@@ -588,7 +620,7 @@ function renderHome(){
         ${days.slice(-8).reverse().map(e=>`
           <div class="thumb">
             <img src="${photoUrl(e.id)}" alt="${fmtDate(e.ts)} 기록" loading="lazy">
-            ${fmtDate(e.ts)} · ${e.metrics.score}
+            ${fmtDate(e.ts)}
           </div>`).join('')}
       </div>
     </div>
@@ -613,16 +645,16 @@ function renderCapture(){
       <div class="cam-wrap" id="camWrap">
         <video id="cam" autoplay playsinline muted></video>
         <svg class="guide" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
-          <defs><mask id="hole"><rect width="300" height="400" fill="#fff"/><circle cx="150" cy="185" r="102" fill="#000"/></mask></defs>
+          <defs><mask id="hole"><rect width="300" height="400" fill="#fff"/><circle cx="150" cy="185" r="115" fill="#000"/></mask></defs>
           <rect width="300" height="400" fill="rgba(16,14,26,.6)" mask="url(#hole)"/>
-          <circle id="progressRing" cx="150" cy="185" r="108" fill="none"
+          <circle id="progressRing" cx="150" cy="185" r="121" fill="none"
             stroke="#8B7FF5" stroke-width="4" stroke-linecap="round"
-            stroke-dasharray="0 679" transform="rotate(-90 150 185)" style="display:none"/>
+            stroke-dasharray="0 760" transform="rotate(-90 150 185)" style="display:none"/>
           <g id="ticks" stroke-width="3" stroke-linecap="round">
             ${Array.from({length:60}, (_,i)=>{
               const a = (i*6 - 90) * Math.PI/180;
-              const x1 = 150 + 112*Math.cos(a), y1 = 185 + 112*Math.sin(a);
-              const x2 = 150 + 125*Math.cos(a), y2 = 185 + 125*Math.sin(a);
+              const x1 = 150 + 127*Math.cos(a), y1 = 185 + 127*Math.sin(a);
+              const x2 = 150 + 140*Math.cos(a), y2 = 185 + 140*Math.sin(a);
               return `<line data-tick="${i}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
             }).join('')}
           </g>
@@ -642,7 +674,10 @@ function renderCapture(){
     </div>
 
     <div class="review" id="review">
-      <img id="reviewImg" alt="촬영된 사진">
+      <div class="photo-frame" style="margin-bottom:14px">
+        <img id="reviewImg" alt="촬영된 사진">
+        <div id="reviewOverlay" style="position:absolute;inset:0;pointer-events:none"></div>
+      </div>
       <div class="metric-preview" id="metricPreview"></div>
       <div class="row2">
         <button class="btn ghost" id="retakeBtn">다시 찍기</button>
@@ -685,7 +720,7 @@ async function initCapture(){
   if(!camOk) return;
 
   /* ---------- 공통: 연속 촬영 후보 관리 ---------- */
-  const RING_LEN = 676;
+  const RING_LEN = 760;
   let capturing = false;
   let candidates = [];   // {score, metrics, dataUrl} — 품질 상위 5장만 유지
   let shotsTotal = 0;
@@ -811,7 +846,7 @@ async function initCapture(){
 
       const eyeDist = Math.hypot(lms[263].x - lms[33].x, lms[263].y - lms[33].y);
       const nose = lms[1];
-      if(eyeDist < 0.13){ stableHint('조금 가까이 와주세요'); return; }
+      if(eyeDist < 0.095){ stableHint('조금 가까이 와주세요'); return; }
       if(eyeDist > 0.36){ stableHint('조금 멀리 떨어져주세요'); return; }
       if(Math.abs(nose.x - 0.5) > 0.17 || nose.y < 0.26 || nose.y > 0.72){
         stableHint('얼굴을 원 중앙에 맞춰주세요'); return;
@@ -911,24 +946,20 @@ function finishCapture(list, shots){
     const c = reviewCandidates[sel];
     pendingCapture = { metrics: c.metrics, dataUrl: c.dataUrl };
     $('#reviewImg').src = c.dataUrl;
+    const ov = $('#reviewOverlay');
+    if(ov) ov.innerHTML = anchorsOverlay([{ a: c.metrics.anchors, color:'#8B7FF5' }]);
     document.querySelectorAll('.cand-strip img').forEach((im,i)=>im.classList.toggle('sel', i===sel));
-    $('#metricGrid').innerHTML = `
-      <div class="mp"><div class="k">종합 점수</div><div class="v" style="color:var(--violet)">${c.metrics.score}</div></div>
-      <div class="mp"><div class="k">피부톤 균일도</div><div class="v">${c.metrics.tone}</div></div>
-      <div class="mp"><div class="k">질감 (모공 근사)</div><div class="v">${c.metrics.texture}</div></div>
-      <div class="mp"><div class="k">선명도</div><div class="v">${c.metrics.sharp}</div></div>
-    `;
   }
 
   $('#metricPreview').innerHTML = `
     ${reviewCandidates.length > 1 ? `
     <div style="grid-column:1/-1">
-      <div class="cand-label">촬영된 ${shots}장 중 상위 ${reviewCandidates.length}장 · <b>선명도 순 자동 선택</b> (탭해서 변경 가능)</div>
+      <div class="cand-label">촬영된 ${shots}장 중 상위 ${reviewCandidates.length}장 · <b>가장 선명한 1장 자동 선택</b> (탭해서 변경 가능)</div>
       <div class="cand-strip">
-        ${reviewCandidates.map((c,i)=>`<img src="${c.dataUrl}" data-ci="${i}" class="${i===0?'sel':''}" alt="후보 ${i+1} (선명도 ${c.metrics.sharp})">`).join('')}
+        ${reviewCandidates.map((c,i)=>`<img src="${c.dataUrl}" data-ci="${i}" class="${i===0?'sel':''}" alt="후보 ${i+1}">`).join('')}
       </div>
     </div>` : ''}
-    <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px" id="metricGrid"></div>
+    <div style="grid-column:1/-1" class="cand-label">사진 위 선은 오늘의 <b>얼굴 기준선</b>이에요. 날짜가 쌓이면 기준선의 움직임으로 변화를 확인할 수 있어요.</div>
   `;
   document.querySelectorAll('.cand-strip img').forEach(im=>{
     im.addEventListener('click', ()=>paint(Number(im.dataset.ci)));
@@ -950,63 +981,84 @@ function finishCapture(list, shots){
 }
 
 /* ========== 분석 ========== */
-const METRICS = [
-  {key:'score',   label:'종합'},
-  {key:'tone',    label:'피부톤'},
-  {key:'texture', label:'질감'},
-  {key:'bright',  label:'밝기'},
-  {key:'sharp',   label:'선명도'},
+const ANA_TABS = [
+  {key:'sag',  label:'기준선 변화'},
+  {key:'pore', label:'모공 비율'},
 ];
-let metricSel = 'score';
+let metricSel = 'sag';
+
+function buildChart(seriesList, unit){
+  // seriesList: [{name, color, pts:[{ts, v}]}]
+  const all = seriesList.flatMap(s=>s.pts.map(p=>p.v));
+  if(!all.length) return '';
+  const W=340, H=150, pad=16;
+  const span = Math.max(...all) - Math.min(...all);
+  const min = Math.min(...all) - Math.max(span*0.2, 0.3);
+  const max = Math.max(...all) + Math.max(span*0.2, 0.3);
+  const allTs = [...new Set(seriesList.flatMap(s=>s.pts.map(p=>p.ts)))].sort((a,b)=>a-b);
+  const X = ts => allTs.length===1 ? W/2 : pad + allTs.indexOf(ts)*(W-pad*2)/(allTs.length-1);
+  const Y = v => H-pad - (v-min)*(H-pad*2)/(max-min);
+  const zero = (min < 0 && max > 0)
+    ? `<line x1="${pad}" x2="${W-pad}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 4"/>` : '';
+  const paths = seriesList.map(s=>{
+    const line = s.pts.map((p,i)=>`${i?'L':'M'}${X(p.ts).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+    const dots = s.pts.map(p=>`<circle cx="${X(p.ts)}" cy="${Y(p.v)}" r="3.2" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>`).join('');
+    return `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linecap="round"/>${dots}`;
+  }).join('');
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${zero}${paths}</svg>
+    <div class="axis-labels"><span>${fmtDate(allTs[0])}</span><span>${fmtDate(allTs[allTs.length-1])}</span></div>`;
+}
 
 function renderAnalysis(){
   const days = latestPerDay();
-  if(days.length < 1){
-    return `<div class="eyebrow">분석</div><h1>지표별 추세</h1>
-      <div class="card empty" style="margin-top:16px"><div class="big">📈</div>기록이 쌓이면 추세가 보여요.<br>먼저 오늘의 얼굴을 기록해보세요.</div>`;
-  }
-  const pts = days.slice(-14);
-  const vals = pts.map(e=>e.metrics[metricSel] ?? 0);
-  const last = vals[vals.length-1];
-  const first = vals[0];
-  const diff = last - first;
+  const withA = days.filter(e=>e.metrics && e.metrics.anchors).slice(-14);
+  const withP = days.filter(e=>e.metrics && e.metrics.poreRatio != null).slice(-14);
 
-  const W=340, H=150, pad=14;
-  const min = Math.min(...vals)-5, max = Math.max(...vals)+5;
-  const X = i => pts.length===1 ? W/2 : pad + i*(W-pad*2)/(pts.length-1);
-  const Y = v => H-pad - (v-min)*(H-pad*2)/Math.max(1,(max-min));
-  const line = vals.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
-  const area = `${line} L${X(vals.length-1)},${H-2} L${X(0)},${H-2} Z`;
-  const dots = vals.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="3.5" fill="var(--violet)" stroke="#fff" stroke-width="1.5"/>`).join('');
+  let body = '';
+  if(metricSel === 'sag'){
+    if(withA.length < 2){
+      body = `<div class="card empty"><div class="big">📐</div>기준선 변화는 이틀 이상 기록되면<br>여기에 나타나요.</div>`;
+    }else{
+      const base = withA[0].metrics.anchors;
+      const mk = key => withA.map(e=>({ ts:e.ts, v:+(( (base[key] - e.metrics.anchors[key]) * 100 ).toFixed(2)) }));
+      body = `
+        <div class="card">
+          <p class="sub" style="margin-bottom:10px">첫 기록을 기준(0)으로, 기준선이 <b>위로 움직이면 +</b>, 아래로 움직이면 −예요. 눈 위치가 고정돼 있어 날짜끼리 그대로 비교됩니다.</p>
+          ${buildChart([
+            { name:'입꼬리', color:'#5B4CE6', pts: mk('mouth') },
+            { name:'턱끝',  color:'#1FA97A', pts: mk('chin') },
+          ], '%')}
+          <div class="legend">
+            <span><span class="sw" style="background:#5B4CE6"></span>입꼬리 기준선</span>
+            <span><span class="sw" style="background:#1FA97A"></span>턱끝 기준선</span>
+          </div>
+          <div class="note">하루 단위 잔떨림은 자연스러운 오차예요. 며칠~몇 주의 방향을 보는 지표이며, 의학적 진단이 아닌 참고용입니다.</div>
+        </div>`;
+    }
+  }else{
+    if(withP.length < 1){
+      body = `<div class="card empty"><div class="big">🔍</div>기록이 쌓이면 볼 영역의<br>모공 비율 변화가 나타나요.</div>`;
+    }else{
+      const last = withP[withP.length-1].metrics.poreRatio;
+      body = `
+        <div class="card">
+          <div class="chart-head"><b>${last}</b><span>% · 최근 기록</span></div>
+          <p class="sub" style="margin-bottom:10px">볼 영역에서 모공성 질감이 차지하는 비율이에요. 절대값보다 <b>변화 방향</b>을 봐주세요.</p>
+          ${buildChart([{ name:'모공 비율', color:'#5B4CE6', pts: withP.map(e=>({ts:e.ts, v:e.metrics.poreRatio})) }], '%')}
+          <div class="note">촬영 밝기·화장 여부에 따라 달라질 수 있어요. 같은 시간·같은 장소 기록이 쌓일수록 정확해지며, 의학적 진단이 아닌 참고용입니다.</div>
+        </div>`;
+    }
+  }
 
   return `
     <div class="eyebrow">분석</div>
-    <h1>지표별 추세</h1>
-    <p class="sub" style="margin:4px 0 16px">최근 ${pts.length}일 · 매일 같은 조건에서 기록할수록 추세가 정확해집니다</p>
-
+    <h1>변화 관찰</h1>
+    <p class="sub" style="margin:4px 0 16px">점수가 아니라 <b>움직임</b>을 봅니다 · 매일 같은 조건일수록 정확해요</p>
     <div class="metric-tabs">
-      ${METRICS.map(m=>`<button class="${m.key===metricSel?'on':''}" onclick="setMetric('${m.key}')">${m.label}</button>`).join('')}
+      ${ANA_TABS.map(m=>`<button class="${m.key===metricSel?'on':''}" onclick="setMetric('${m.key}')">${m.label}</button>`).join('')}
     </div>
-
-    <div class="card">
-      <div class="chart-head">
-        <b>${last}</b><span>/100</span>
-        <span class="delta ${diff>0?'up':diff<0?'down':'flat'}" style="margin-left:auto">
-          ${diff>0?`+${diff}`:diff} <span style="font-weight:500;color:var(--ink-soft)">기간 변화</span>
-        </span>
-      </div>
-      <svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-        <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="var(--violet)" stop-opacity=".18"/>
-          <stop offset="1" stop-color="var(--violet)" stop-opacity="0"/>
-        </linearGradient></defs>
-        <path d="${area}" fill="url(#ag)"/>
-        <path d="${line}" fill="none" stroke="var(--violet)" stroke-width="2.5" stroke-linecap="round"/>
-        ${dots}
-      </svg>
-      <div class="axis-labels"><span>${fmtDate(pts[0].ts)}</span><span>${fmtDate(pts[pts.length-1].ts)}</span></div>
-      <div class="note">지표는 촬영 이미지의 픽셀 통계로 계산되는 <b>근사 지수</b>예요. 의학적 진단이 아닌, 방향과 변화를 보기 위한 참고 지표입니다.</div>
-    </div>
+    ${body}
   `;
 }
 function setMetric(k){ metricSel = k; render(); }
@@ -1033,10 +1085,15 @@ function renderCompare(){
     <div class="compare-stage" id="stage">
       <img id="imgA" alt="이전 기록">
       <img id="imgB" class="after-clip" alt="이후 기록">
+      <div id="compareOverlay" style="position:absolute;inset:0;pointer-events:none"></div>
       <div class="handle" id="handle"></div>
       <span class="lbl a">과거의 나</span><span class="lbl b">오늘의 나</span>
     </div>
     <input type="range" class="compare-range" id="slider" min="0" max="100" value="50" aria-label="비교 슬라이더">
+    <div class="legend" style="margin:-4px 0 12px">
+      <span><span class="sw" style="background:rgba(255,255,255,.9);border:1px solid #ccc"></span>과거 기준선</span>
+      <span><span class="sw" style="background:#5B4CE6"></span>현재 기준선</span>
+    </div>
 
     <div class="card delta-list" id="deltaList"></div>
   `;
@@ -1062,15 +1119,35 @@ function initCompare(){
     if(!a||!b) return;
     $('#imgA').src = photoUrl(a.id);
     imgB.src = photoUrl(b.id);
-    const rows = [
-      ['종합 점수','score'],['피부톤 균일도','tone'],['질감 (모공 근사)','texture'],['밝기','bright'],['선명도','sharp']
-    ].map(([label,k])=>{
-      const d = b.metrics[k]-a.metrics[k];
-      const cls = d>0?'up':d<0?'down':'flat';
-      return `<div class="dl"><span>${label}</span>
-        <span><b>${a.metrics[k]}</b> → <b>${b.metrics[k]}</b>
-        <span class="delta ${cls}" style="margin-left:8px">${d>0?'+':''}${d}</span></span></div>`;
-    }).join('');
+
+    const aA = a.metrics && a.metrics.anchors, bA = b.metrics && b.metrics.anchors;
+    $('#compareOverlay').innerHTML = anchorsOverlay([
+      ...(aA ? [{ a: aA, color:'rgba(255,255,255,.95)', dash:true, op:.85 }] : []),
+      ...(bA ? [{ a: bA, color:'#5B4CE6' }] : []),
+    ]);
+
+    let rows = '';
+    if(aA && bA){
+      rows = [
+        ['입꼬리 기준선','mouth'],
+        ['턱끝 기준선','chin'],
+        ['코밑 기준선','nose'],
+      ].map(([label,k])=>{
+        const d = +(((aA[k] - bA[k]) * 100).toFixed(2)); // + = 위로 이동
+        const txt = Math.abs(d) < 0.15 ? '변화 없음'
+          : d > 0 ? `${d}% 위로 ↑` : `${Math.abs(d)}% 아래로 ↓`;
+        const cls = Math.abs(d) < 0.15 ? 'flat' : d > 0 ? 'up' : 'down';
+        return `<div class="dl"><span>${label}</span><span class="delta ${cls}">${txt}</span></div>`;
+      }).join('');
+    } else {
+      rows = `<div class="dl"><span class="sub">이전 버전에서 저장된 기록이라 기준선 데이터가 없어요. 새 기록끼리 비교하면 기준선이 표시됩니다.</span></div>`;
+    }
+    const aP = a.metrics && a.metrics.poreRatio, bP = b.metrics && b.metrics.poreRatio;
+    if(aP != null && bP != null){
+      const d = +((bP - aP).toFixed(1));
+      rows += `<div class="dl"><span>모공 비율</span><span><b>${aP}%</b> → <b>${bP}%</b>
+        <span class="delta ${d<0?'up':d>0?'down':'flat'}" style="margin-left:8px">${d>0?'+':''}${d}%p</span></span></div>`;
+    }
     $('#deltaList').innerHTML = rows;
   }
   pickA.addEventListener('change', refresh);
