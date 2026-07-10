@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Youth — 오늘이 가장 젊은 당신</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#5B4CE6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Youth">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<style>
+  :root{
+    --violet:#5B4CE6;
+    --violet-deep:#3D31B8;
+    --violet-soft:#EDEAFE;
+    --lavender:#F5F3FC;
+    --ink:#1D1B2E;
+    --ink-soft:#6E6A85;
+    --line:#E5E1F2;
+    --card:#FFFFFF;
+    --good:#1FA97A;
+    --warn:#E08A2E;
+    --radius:18px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    background:#DDD9EF;
+    color:var(--ink);
+    display:flex;justify-content:center;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{
+    width:100%;max-width:430px;min-height:100dvh;
+    background:var(--lavender);
+    display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
+  }
+  main{flex:1;overflow-y:auto;padding:20px 18px 96px}
+
+  /* ---------- 공통 ---------- */
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--violet);text-transform:uppercase;margin-bottom:6px}
+  h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  h2{font-size:16px;font-weight:700;margin-bottom:10px}
+  .sub{font-size:13px;color:var(--ink-soft);line-height:1.5}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px}
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;padding:15px;border:none;border-radius:14px;
+    background:var(--violet);color:#fff;font-size:15px;font-weight:700;
+    font-family:inherit;cursor:pointer;transition:transform .08s ease, background .15s;
+  }
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{background:#B8B2DE;cursor:not-allowed}
+  .btn.ghost{background:var(--violet-soft);color:var(--violet-deep)}
+  .empty{
+    text-align:center;padding:44px 20px;color:var(--ink-soft);font-size:14px;line-height:1.6;
+  }
+  .empty .big{font-size:34px;margin-bottom:10px}
+
+  /* ---------- 탭바 ---------- */
+  nav{
+    position:absolute;bottom:0;left:0;right:0;
+    background:rgba(255,255,255,.92);backdrop-filter:blur(12px);
+    border-top:1px solid var(--line);
+    display:flex;padding:8px 8px calc(10px + env(safe-area-inset-bottom));
+    z-index:50;
+  }
+  nav button{
+    flex:1;background:none;border:none;font-family:inherit;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    font-size:11px;font-weight:600;color:var(--ink-soft);padding:6px 0;border-radius:12px;
+  }
+  nav button.on{color:var(--violet)}
+  nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- 홈 ---------- */
+  .score-ring{position:relative;width:150px;height:150px;margin:8px auto 4px}
+  .score-ring svg{transform:rotate(-90deg)}
+  .score-ring .val{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  }
+  .score-ring .val b{font-size:40px;font-weight:800;letter-spacing:-.03em}
+  .score-ring .val span{font-size:12px;color:var(--ink-soft)}
+  .delta{font-size:13px;font-weight:700}
+  .delta.up{color:var(--good)} .delta.down{color:var(--warn)} .delta.flat{color:var(--ink-soft)}
+  .recent-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+  .recent-strip .thumb{
+    flex:0 0 72px;text-align:center;font-size:11px;color:var(--ink-soft);
+  }
+  .recent-strip img{
+    width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid var(--line);display:block;margin-bottom:4px;
+    background:var(--violet-soft);
+  }
+  .streak{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-soft)}
+  .streak b{color:var(--violet);font-size:18px}
+
+  /* ---------- 촬영 ---------- */
+  .cam-wrap{
+    position:relative;width:100%;aspect-ratio:3/4;border-radius:20px;overflow:hidden;
+    background:#14121F;margin-bottom:14px;
+  }
+  .cam-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .cam-wrap .guide{position:absolute;inset:0;pointer-events:none}
+  .cam-hint{
+    position:absolute;top:14px;left:0;right:0;text-align:center;
+    color:#fff;font-size:13px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.5);
+  }
+  .gates{
+    position:absolute;bottom:12px;left:12px;right:12px;
+    display:flex;gap:8px;justify-content:center;
+  }
+  .gate{
+    font-size:12px;font-weight:700;padding:6px 12px;border-radius:99px;
+    background:rgba(20,18,31,.72);color:#9A94B8;backdrop-filter:blur(6px);
+    display:flex;align-items:center;gap:5px;
+  }
+  .gate.ok{color:#5CE6B0}
+  .gate .dot{width:7px;height:7px;border-radius:99px;background:currentColor}
+  .countdown{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(20,18,31,.35);
+  }
+  .countdown.show{display:flex}
+  .countdown b{font-size:88px;font-weight:800;color:#fff;text-shadow:0 2px 20px rgba(0,0,0,.4)}
+  .cam-fallback{padding:24px;text-align:center;color:#B8B2DE;font-size:13px;line-height:1.6;
+    position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+  .cam-fallback.show{display:flex}
+  .cam-fallback label{
+    display:inline-block;padding:12px 22px;border-radius:12px;background:var(--violet);color:#fff;
+    font-weight:700;font-size:14px;cursor:pointer;
+  }
+  .review{display:none}
+  .review.show{display:block}
+  .review img{width:100%;border-radius:20px;margin-bottom:14px}
+  .metric-preview{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+  .metric-preview .mp{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;
+  }
+  .mp .k{font-size:11px;color:var(--ink-soft);margin-bottom:2px}
+  .mp .v{font-size:18px;font-weight:800}
+  .row2{display:flex;gap:10px}
+  .row2 .btn{flex:1}
+
+  /* ---------- 분석 ---------- */
+  .metric-tabs{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto}
+  .metric-tabs button{
+    flex:0 0 auto;padding:8px 14px;border-radius:99px;border:1px solid var(--line);
+    background:var(--card);font-family:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+  }
+  .metric-tabs button.on{background:var(--violet);border-color:var(--violet);color:#fff}
+  .chart-head{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+  .chart-head b{font-size:30px;font-weight:800}
+  .chart-head span{font-size:12px;color:var(--ink-soft)}
+  .chart-svg{width:100%;height:150px;display:block}
+  .axis-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-top:6px}
+  .note{font-size:11.5px;color:var(--ink-soft);line-height:1.55;margin-top:10px;
+    background:var(--violet-soft);border-radius:10px;padding:10px 12px}
+
+  /* ---------- 전후 ---------- */
+  .compare-picks{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+  .compare-picks select{
+    flex:1;padding:11px 12px;border-radius:12px;border:1px solid var(--line);
+    font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);background:var(--card);
+  }
+  .compare-picks .arrow{color:var(--ink-soft);font-weight:700}
+  .compare-stage{
+    position:relative;width:100%;aspect-ratio:1/1;border-radius:20px;overflow:hidden;
+    background:#14121F;margin-bottom:10px;user-select:none;
+  }
+  .compare-stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .compare-stage .after-clip{clip-path:inset(0 0 0 50%)}
+  .compare-stage .handle{
+    position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;
+    box-shadow:0 0 10px rgba(0,0,0,.4);
+  }
+  .compare-stage .handle::after{
+    content:'⇔';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:36px;height:36px;border-radius:99px;background:#fff;color:var(--violet-deep);
+    display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;
+  }
+  .compare-stage .lbl{
+    position:absolute;top:10px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px;
+    background:rgba(20,18,31,.7);color:#fff;
+  }
+  .compare-stage .lbl.a{left:10px}.compare-stage .lbl.b{right:10px}
+  .compare-range{width:100%;margin-bottom:14px;accent-color:var(--violet)}
+  .delta-list .dl{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 0;border-bottom:1px solid var(--line);font-size:14px;
+  }
+  .delta-list .dl:last-child{border-bottom:none}
+  .dl b{font-weight:700}
+  .toast{
+    position:absolute;left:50%;bottom:110px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;font-size:13px;font-weight:600;
+    padding:11px 18px;border-radius:99px;opacity:0;pointer-events:none;
+    transition:all .25s ease;z-index:99;white-space:nowrap;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none!important;animation:none!important}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <main id="main"></main>
+
+  <nav id="nav">
+    <button data-view="home" class="on">
+      <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈
+    </button>
+    <button data-view="capture">
+      <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="4"/><path d="M9 6l1.5-2h3L15 6"/></svg>촬영
+    </button>
+    <button data-view="analysis">
+      <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M7 14l3-4 3 2 4-6"/></svg>분석
+    </button>
+    <button data-view="compare">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="7.5" height="14" rx="2"/><rect x="13.5" y="5" width="7.5" height="14" rx="2"/><path d="M12 3v18" stroke-dasharray="2 3"/></svg>전후
+    </button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* =========================================================
+   Youth MVP — 서버 연동 버전
+   기록은 서버(PostgreSQL)에 저장되고, 기기 UUID로 사용자를 구분합니다.
+   지표는 촬영 이미지의 픽셀 통계에서 계산되는 근사치이며,
+   의학적 진단이 아닌 변화 추적 참고용입니다.
+========================================================= */
+
+const S = 512; // 정규화 저장 해상도
+
+/* ---------- 사용자 식별 (기기 UUID) ---------- */
+const userId = (() => {
+  let u = localStorage.getItem('youth_uid');
+  if (!u) {
+    u = (crypto.randomUUID ? crypto.randomUUID()
+        : 'u-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    localStorage.setItem('youth_uid', u);
+  }
+  return u;
+})();
+
+/* ---------- 서버 API ---------- */
+let entries = []; // [{id, ts, dateKey, metrics}]
+
+async function loadIndex(){
+  try{
+    const r = await fetch('/api/records?userId=' + encodeURIComponent(userId));
+    if(!r.ok) throw new Error();
+    const rows = await r.json();
+    entries = rows.map(row => {
+      const ts = new Date(row.takenAt).getTime();
+      return { id: row.id, ts, dateKey: dateKey(ts), metrics: row.metrics };
+    }).sort((a,b)=>a.ts-b.ts);
+  }catch(e){
+    entries = [];
+    toast('서버 연결에 실패했어요. 새로고침 해주세요.');
+  }
+}
+
+async function saveEntryToServer(metrics, dataUrl){
+  const r = await fetch('/api/records', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ userId, metrics, photoBase64: dataUrl })
+  });
+  if(!r.ok) throw new Error('save failed');
+  const { id, takenAt } = await r.json();
+  const ts = new Date(takenAt).getTime();
+  entries.push({ id, ts, dateKey: dateKey(ts), metrics });
+  entries.sort((a,b)=>a.ts-b.ts);
+}
+
+const photoUrl = id => '/api/photo/' + id;
+
+/* ---------- 유틸 ---------- */
+const $ = s => document.querySelector(s);
+const fmtDate = ts => { const d=new Date(ts); return `${d.getMonth()+1}.${String(d.getDate()).padStart(2,'0')}`; };
+const fmtFull = ts => { const d=new Date(ts); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; };
+const dateKey = ts => { const d=new Date(ts); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; };
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function latestPerDay(){
+  const m = new Map();
+  for(const e of entries) m.set(e.dateKey, e);
+  return [...m.values()];
+}
+
+/* ---------- 이미지 분석 (실제 픽셀 계산) ---------- */
+function analyzeImageData(imgData){
+  const {data, width:W, height:H} = imgData;
+  const cx = W/2, cy = H*0.52, rx = W*0.30, ry = H*0.38;
+  const inOval = (x,y)=>{ const dx=(x-cx)/rx, dy=(y-cy)/ry; return dx*dx+dy*dy <= 1; };
+
+  let n=0, sumL=0, sumLeft=0, nLeft=0, sumRight=0, nRight=0;
+  let sumRG=0, sumRB=0, sumRG2=0, sumRB2=0;
+  const gw = Math.ceil(W/2), gh = Math.ceil(H/2);
+  const gray = new Float32Array(gw*gh);
+
+  for(let y=0;y<H;y+=2){
+    for(let x=0;x<W;x+=2){
+      const i=(y*W+x)*4;
+      const r=data[i], g=data[i+1], b=data[i+2];
+      const L = 0.299*r + 0.587*g + 0.114*b;
+      gray[(y>>1)*gw+(x>>1)] = L;
+      if(!inOval(x,y)) continue;
+      n++; sumL+=L;
+      if(x<cx){ sumLeft+=L; nLeft++; } else { sumRight+=L; nRight++; }
+      const rg=r-g, rb=r-b;
+      sumRG+=rg; sumRB+=rb; sumRG2+=rg*rg; sumRB2+=rb*rb;
+    }
+  }
+  if(n<100) return null;
+
+  const meanL = sumL/n;
+  const balance = Math.abs((sumLeft/Math.max(nLeft,1)) - (sumRight/Math.max(nRight,1)));
+
+  let lapSum=0, lapSum2=0, ln=0;
+  for(let y=1;y<gh-1;y++){
+    for(let x=1;x<gw-1;x++){
+      const px = x*2, py = y*2;
+      if(!inOval(px,py)) continue;
+      const c = gray[y*gw+x];
+      const lap = gray[(y-1)*gw+x] + gray[(y+1)*gw+x] + gray[y*gw+x-1] + gray[y*gw+x+1] - 4*c;
+      lapSum+=lap; lapSum2+=lap*lap; ln++;
+    }
+  }
+  const lapVar = ln>0 ? (lapSum2/ln - (lapSum/ln)**2) : 0;
+
+  const rgStd = Math.sqrt(Math.max(0, sumRG2/n - (sumRG/n)**2));
+  const rbStd = Math.sqrt(Math.max(0, sumRB2/n - (sumRB/n)**2));
+
+  const bright = Math.round(Math.max(0, Math.min(100, 100 - Math.abs(meanL-130)*0.9 - balance*0.6)));
+  const sharp = Math.round(Math.max(0, Math.min(100, (lapVar-20)/3.6)));
+  const tone = Math.round(Math.max(0, Math.min(100, 100 - (rgStd+rbStd)*1.4)));
+  const texture = Math.round(Math.max(0, Math.min(100, 100 - Math.sqrt(lapVar)*2.2 + sharp*0.25)));
+
+  const score = Math.round(Math.max(30, Math.min(98,
+    tone*0.35 + texture*0.30 + bright*0.20 + sharp*0.15
+  )));
+
+  return { score, bright, sharp, tone, texture,
+           raw:{ meanL:Math.round(meanL), lapVar:Math.round(lapVar), balance:Math.round(balance) } };
+}
+
+function analyzeFromSource(source, sw, sh){
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d', {willReadFrequently:true});
+  const side = Math.min(sw, sh);
+  ctx.drawImage(source, (sw-side)/2, (sh-side)/2, side, side, 0, 0, S, S);
+  const metrics = analyzeImageData(ctx.getImageData(0,0,S,S));
+  const dataUrl = cv.toDataURL('image/jpeg', 0.82);
+  return { metrics, dataUrl };
+}
+
+/* ---------- 라우팅 ---------- */
+let view = 'home';
+let camStream = null;
+let gateTimer = null;
+
+document.querySelectorAll('nav button').forEach(b=>{
+  b.addEventListener('click', ()=>go(b.dataset.view));
+});
+function go(v){
+  if(view==='capture' && v!=='capture') stopCamera();
+  view = v;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===v));
+  render();
+}
+
+function stopCamera(){
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  if(gateTimer){ clearInterval(gateTimer); gateTimer=null; }
+}
+
+/* ---------- 렌더 ---------- */
+function render(){
+  const m = $('#main');
+  if(view==='home') m.innerHTML = renderHome();
+  if(view==='capture'){ m.innerHTML = renderCapture(); initCapture(); }
+  if(view==='analysis') m.innerHTML = renderAnalysis();
+  if(view==='compare'){ m.innerHTML = renderCompare(); initCompare(); }
+}
+
+/* ========== 홈 ========== */
+function renderHome(){
+  const days = latestPerDay();
+  const today = days[days.length-1];
+  const prev = days[days.length-2];
+  const delta = (today && prev) ? today.metrics.score - prev.metrics.score : null;
+  const deltaCls = delta===null?'flat':delta>0?'up':delta<0?'down':'flat';
+  const deltaTxt = delta===null?'첫 기록':delta>0?`+${delta} 전일 대비`:delta<0?`${delta} 전일 대비`:'± 0 전일 대비';
+
+  let streak = 0;
+  if(days.length){
+    const oneDay = 86400000;
+    let cursor = new Date(); cursor.setHours(0,0,0,0);
+    const keys = new Set(days.map(d=>d.dateKey));
+    while(keys.has(dateKey(cursor.getTime()))){ streak++; cursor = new Date(cursor.getTime()-oneDay); }
+  }
+
+  const scoreVal = today ? today.metrics.score : null;
+  const circ = 2*Math.PI*62;
+  const dash = scoreVal ? circ*scoreVal/100 : 0;
+
+  return `
+    <div class="eyebrow">Youth</div>
+    <h1>오늘의 당신</h1>
+    <p class="sub" style="margin:4px 0 18px">${fmtFull(Date.now())} · 작은 변화가 쌓여 큰 차이를 만듭니다</p>
+
+    <div class="card" style="text-align:center">
+      <div class="score-ring">
+        <svg width="150" height="150">
+          <circle cx="75" cy="75" r="62" stroke="var(--violet-soft)" stroke-width="11" fill="none"/>
+          <circle cx="75" cy="75" r="62" stroke="var(--violet)" stroke-width="11" fill="none"
+            stroke-linecap="round" stroke-dasharray="${dash} ${circ}"/>
+        </svg>
+        <div class="val">
+          <b>${scoreVal ?? '—'}</b><span>/100 종합 점수</span>
+        </div>
+      </div>
+      <div class="delta ${deltaCls}">${today?deltaTxt:'아직 오늘 기록이 없어요'}</div>
+      <div style="height:14px"></div>
+      <button class="btn" onclick="go('capture')">
+        <svg width="18" height="18" viewBox="0 0 24 24" stroke="#fff" fill="none" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="4"/></svg>
+        3초 기록하기
+      </button>
+    </div>
+
+    ${days.length ? `
+    <div class="card">
+      <h2>최근 기록</h2>
+      <div class="recent-strip">
+        ${days.slice(-8).reverse().map(e=>`
+          <div class="thumb">
+            <img src="${photoUrl(e.id)}" alt="${fmtDate(e.ts)} 기록" loading="lazy">
+            ${fmtDate(e.ts)} · ${e.metrics.score}
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="card streak">
+      <b>${streak}</b>일 연속 기록 중 &nbsp;·&nbsp; 총 ${entries.length}회 기록
+    </div>` : `
+    <div class="card empty">
+      <div class="big">📸</div>
+      아직 기록이 없어요.<br>하루 3초, 오늘의 얼굴부터 남겨보세요.
+    </div>`}
+  `;
+}
+
+/* ========== 촬영 ========== */
+function renderCapture(){
+  return `
+    <div class="eyebrow">기록</div>
+    <h1>3초 가이드 촬영</h1>
+    <p class="sub" style="margin:4px 0 16px">정면을 바라보고, 무표정으로 자연스럽게. 매일 같은 조건이 정확한 비교를 만듭니다.</p>
+
+    <div id="camView">
+      <div class="cam-wrap" id="camWrap">
+        <video id="cam" autoplay playsinline muted></video>
+        <svg class="guide" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
+          <defs><mask id="hole"><rect width="300" height="400" fill="#fff"/><ellipse cx="150" cy="200" rx="92" ry="122" fill="#000"/></mask></defs>
+          <rect width="300" height="400" fill="rgba(20,18,31,.45)" mask="url(#hole)"/>
+          <ellipse cx="150" cy="200" rx="92" ry="122" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="6 6"/>
+        </svg>
+        <div class="cam-hint">얼굴을 가이드 안에 맞춰주세요</div>
+        <div class="gates">
+          <div class="gate" id="gateBright"><span class="dot"></span>밝기</div>
+          <div class="gate" id="gateSharp"><span class="dot"></span>선명도</div>
+        </div>
+        <div class="countdown" id="countdown"><b>3</b></div>
+        <div class="cam-fallback" id="camFallback">
+          카메라를 사용할 수 없는 환경이에요.<br>사진을 직접 선택해 기록할 수 있습니다.
+          <label>사진 선택하기<input type="file" id="fileInput" accept="image/*" capture="user" hidden></label>
+        </div>
+      </div>
+      <button class="btn" id="shootBtn" disabled>3초 카운트 후 촬영</button>
+    </div>
+
+    <div class="review" id="review">
+      <img id="reviewImg" alt="촬영된 사진">
+      <div class="metric-preview" id="metricPreview"></div>
+      <div class="row2">
+        <button class="btn ghost" id="retakeBtn">다시 찍기</button>
+        <button class="btn" id="saveBtn">오늘 기록으로 저장</button>
+      </div>
+    </div>
+  `;
+}
+
+let pendingCapture = null;
+
+async function initCapture(){
+  const video = $('#cam');
+  const fallback = $('#camFallback');
+  const shootBtn = $('#shootBtn');
+
+  const fi = $('#fileInput');
+  if(fi) fi.addEventListener('change', e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const img = new Image();
+    img.onload = ()=>{ finishCapture(analyzeFromSource(img, img.naturalWidth, img.naturalHeight)); };
+    img.src = URL.createObjectURL(f);
+  });
+
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'user', width:{ideal:960}, height:{ideal:1280} }, audio:false
+    });
+    video.srcObject = camStream;
+
+    // 실시간 품질 게이트 — 정규화 기술의 핵심
+    const gv = document.createElement('canvas');
+    gv.width = 160; gv.height = 214;
+    const gctx = gv.getContext('2d', {willReadFrequently:true});
+    gateTimer = setInterval(()=>{
+      if(!camStream || video.readyState < 2) return;
+      gctx.drawImage(video, 0, 0, gv.width, gv.height);
+      const m = analyzeImageData(gctx.getImageData(0,0,gv.width,gv.height));
+      if(!m) return;
+      const okB = m.raw.meanL > 70 && m.raw.meanL < 210;
+      const okS = m.raw.lapVar > 25;
+      $('#gateBright')?.classList.toggle('ok', okB);
+      $('#gateSharp')?.classList.toggle('ok', okS);
+      shootBtn.disabled = !(okB && okS);
+      shootBtn.textContent = (okB && okS) ? '3초 카운트 후 촬영' : '밝은 곳에서 카메라를 고정해주세요';
+    }, 500);
+
+    shootBtn.addEventListener('click', async ()=>{
+      const cd = $('#countdown'); const num = cd.querySelector('b');
+      cd.classList.add('show');
+      for(let i=3;i>=1;i--){ num.textContent = i; await new Promise(r=>setTimeout(r, 800)); }
+      cd.classList.remove('show');
+      const w = video.videoWidth, h = video.videoHeight;
+      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+      const cx = cv.getContext('2d');
+      cx.translate(w,0); cx.scale(-1,1);
+      cx.drawImage(video,0,0);
+      finishCapture(analyzeFromSource(cv, w, h));
+    });
+  }catch(err){
+    fallback.classList.add('show');
+    shootBtn.style.display = 'none';
+  }
+}
+
+function finishCapture({metrics, dataUrl}){
+  if(!metrics){ toast('분석할 수 없는 이미지예요. 다시 시도해주세요.'); return; }
+  stopCamera();
+  pendingCapture = { metrics, dataUrl };
+  $('#camView').style.display = 'none';
+  const rv = $('#review'); rv.classList.add('show');
+  $('#reviewImg').src = dataUrl;
+  $('#metricPreview').innerHTML = `
+    <div class="mp"><div class="k">종합 점수</div><div class="v" style="color:var(--violet)">${metrics.score}</div></div>
+    <div class="mp"><div class="k">피부톤 균일도</div><div class="v">${metrics.tone}</div></div>
+    <div class="mp"><div class="k">질감 (모공 근사)</div><div class="v">${metrics.texture}</div></div>
+    <div class="mp"><div class="k">촬영 품질</div><div class="v">${Math.round((metrics.bright+metrics.sharp)/2)}</div></div>
+  `;
+  $('#retakeBtn').addEventListener('click', ()=>{ pendingCapture=null; render(); });
+  $('#saveBtn').addEventListener('click', async function(){
+    this.disabled = true; this.textContent = '저장 중...';
+    try{
+      await saveEntryToServer(pendingCapture.metrics, pendingCapture.dataUrl);
+      pendingCapture = null;
+      toast('오늘의 기록이 저장됐어요 ✓');
+      go('home');
+    }catch(e){
+      this.disabled = false; this.textContent = '오늘 기록으로 저장';
+      toast('저장에 실패했어요. 다시 시도해주세요.');
+    }
+  });
+}
+
+/* ========== 분석 ========== */
+const METRICS = [
+  {key:'score',   label:'종합'},
+  {key:'tone',    label:'피부톤'},
+  {key:'texture', label:'질감'},
+  {key:'bright',  label:'밝기'},
+  {key:'sharp',   label:'선명도'},
+];
+let metricSel = 'score';
+
+function renderAnalysis(){
+  const days = latestPerDay();
+  if(days.length < 1){
+    return `<div class="eyebrow">분석</div><h1>지표별 추세</h1>
+      <div class="card empty" style="margin-top:16px"><div class="big">📈</div>기록이 쌓이면 추세가 보여요.<br>먼저 오늘의 얼굴을 기록해보세요.</div>`;
+  }
+  const pts = days.slice(-14);
+  const vals = pts.map(e=>e.metrics[metricSel] ?? 0);
+  const last = vals[vals.length-1];
+  const first = vals[0];
+  const diff = last - first;
+
+  const W=340, H=150, pad=14;
+  const min = Math.min(...vals)-5, max = Math.max(...vals)+5;
+  const X = i => pts.length===1 ? W/2 : pad + i*(W-pad*2)/(pts.length-1);
+  const Y = v => H-pad - (v-min)*(H-pad*2)/Math.max(1,(max-min));
+  const line = vals.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const area = `${line} L${X(vals.length-1)},${H-2} L${X(0)},${H-2} Z`;
+  const dots = vals.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="3.5" fill="var(--violet)" stroke="#fff" stroke-width="1.5"/>`).join('');
+
+  return `
+    <div class="eyebrow">분석</div>
+    <h1>지표별 추세</h1>
+    <p class="sub" style="margin:4px 0 16px">최근 ${pts.length}일 · 매일 같은 조건에서 기록할수록 추세가 정확해집니다</p>
+
+    <div class="metric-tabs">
+      ${METRICS.map(m=>`<button class="${m.key===metricSel?'on':''}" onclick="setMetric('${m.key}')">${m.label}</button>`).join('')}
+    </div>
+
+    <div class="card">
+      <div class="chart-head">
+        <b>${last}</b><span>/100</span>
+        <span class="delta ${diff>0?'up':diff<0?'down':'flat'}" style="margin-left:auto">
+          ${diff>0?`+${diff}`:diff} <span style="font-weight:500;color:var(--ink-soft)">기간 변화</span>
+        </span>
+      </div>
+      <svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="var(--violet)" stop-opacity=".18"/>
+          <stop offset="1" stop-color="var(--violet)" stop-opacity="0"/>
+        </linearGradient></defs>
+        <path d="${area}" fill="url(#ag)"/>
+        <path d="${line}" fill="none" stroke="var(--violet)" stroke-width="2.5" stroke-linecap="round"/>
+        ${dots}
+      </svg>
+      <div class="axis-labels"><span>${fmtDate(pts[0].ts)}</span><span>${fmtDate(pts[pts.length-1].ts)}</span></div>
+      <div class="note">지표는 촬영 이미지의 픽셀 통계로 계산되는 <b>근사 지수</b>예요. 의학적 진단이 아닌, 방향과 변화를 보기 위한 참고 지표입니다.</div>
+    </div>
+  `;
+}
+function setMetric(k){ metricSel = k; render(); }
+
+/* ========== 전후 ========== */
+function renderCompare(){
+  const days = latestPerDay();
+  if(days.length < 2){
+    return `<div class="eyebrow">전후</div><h1>두 날짜 비교</h1>
+      <div class="card empty" style="margin-top:16px"><div class="big">🪞</div>비교하려면 서로 다른 날의 기록이<br>2개 이상 필요해요.</div>`;
+  }
+  const opts = days.map(e=>`<option value="${e.id}">${fmtFull(e.ts)}</option>`).join('');
+  return `
+    <div class="eyebrow">전후</div>
+    <h1>두 날짜 비교</h1>
+    <p class="sub" style="margin:4px 0 16px">슬라이더를 움직여 변화를 확인하세요</p>
+
+    <div class="compare-picks">
+      <select id="pickA">${opts}</select>
+      <span class="arrow">→</span>
+      <select id="pickB">${opts}</select>
+    </div>
+
+    <div class="compare-stage" id="stage">
+      <img id="imgA" alt="이전 기록">
+      <img id="imgB" class="after-clip" alt="이후 기록">
+      <div class="handle" id="handle"></div>
+      <span class="lbl a">과거의 나</span><span class="lbl b">오늘의 나</span>
+    </div>
+    <input type="range" class="compare-range" id="slider" min="0" max="100" value="50" aria-label="비교 슬라이더">
+
+    <div class="card delta-list" id="deltaList"></div>
+  `;
+}
+
+function initCompare(){
+  const days = latestPerDay();
+  if(days.length < 2) return;
+  const pickA = $('#pickA'), pickB = $('#pickB');
+  pickA.value = days[0].id;
+  pickB.value = days[days.length-1].id;
+
+  const slider = $('#slider'), imgB = $('#imgB'), handle = $('#handle');
+  slider.addEventListener('input', ()=>{
+    const v = slider.value;
+    imgB.style.clipPath = `inset(0 0 0 ${v}%)`;
+    handle.style.left = v + '%';
+  });
+
+  function refresh(){
+    const a = entries.find(e=>e.id===pickA.value);
+    const b = entries.find(e=>e.id===pickB.value);
+    if(!a||!b) return;
+    $('#imgA').src = photoUrl(a.id);
+    imgB.src = photoUrl(b.id);
+    const rows = [
+      ['종합 점수','score'],['피부톤 균일도','tone'],['질감 (모공 근사)','texture'],['밝기','bright'],['선명도','sharp']
+    ].map(([label,k])=>{
+      const d = b.metrics[k]-a.metrics[k];
+      const cls = d>0?'up':d<0?'down':'flat';
+      return `<div class="dl"><span>${label}</span>
+        <span><b>${a.metrics[k]}</b> → <b>${b.metrics[k]}</b>
+        <span class="delta ${cls}" style="margin-left:8px">${d>0?'+':''}${d}</span></span></div>`;
+    }).join('');
+    $('#deltaList').innerHTML = rows;
+  }
+  pickA.addEventListener('change', refresh);
+  pickB.addEventListener('change', refresh);
+  refresh();
+}
+
+/* ---------- 시작 ---------- */
+window.go = go;
+window.setMetric = setMetric;
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+(async ()=>{
+  await loadIndex();
+  render();
+})();
+</script>
+</body>
+</html>
