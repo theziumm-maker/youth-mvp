@@ -111,6 +111,7 @@
     transition:color .2s;
   }
   .cam-hint.progress{color:#B8AFFF;font-size:16px}
+  #ticks line.lit{stroke:#8B7FF5}
   .flash{
     position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;
     transition:opacity .12s ease;
@@ -257,6 +258,32 @@
 </style>
 </head>
 <body>
+<script type="module">
+/* MediaPipe 얼굴 인식 엔진 — 페이지 로드와 동시에 백그라운드로 준비 */
+(async () => {
+  try {
+    const { FaceLandmarker, FilesetResolver } =
+      await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+    const fileset = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    const opts = (delegate) => ({
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+        delegate
+      },
+      runningMode: 'VIDEO',
+      numFaces: 1
+    });
+    try {
+      window.faceLm = await FaceLandmarker.createFromOptions(fileset, opts('GPU'));
+    } catch (e) {
+      window.faceLm = await FaceLandmarker.createFromOptions(fileset, opts('CPU'));
+    }
+  } catch (e) {
+    console.warn('얼굴 인식 엔진 로드 실패 — 기본 촬영 모드로 동작합니다', e);
+  }
+})();
+</script>
 <div id="app">
   <main id="main"></main>
 
@@ -548,6 +575,14 @@ function renderCapture(){
           <ellipse id="progressRing" cx="150" cy="200" rx="92" ry="122" fill="none"
             stroke="#8B7FF5" stroke-width="5" stroke-linecap="round"
             stroke-dasharray="0 676" transform="rotate(-90 150 200)"/>
+          <g id="ticks" stroke="rgba(255,255,255,.3)" stroke-width="5" stroke-linecap="round">
+            ${Array.from({length:12}, (_,i)=>{
+              const a = (-90 + i*30) * Math.PI/180;
+              const x1 = 150 + 102*Math.cos(a), y1 = 200 + 132*Math.sin(a);
+              const x2 = 150 + 116*Math.cos(a), y2 = 200 + 148*Math.sin(a);
+              return `<line data-tick="${i}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+            }).join('')}
+          </g>
         </svg>
         <div class="cam-hint" id="camHint">얼굴을 가이드 안에 맞춰주세요</div>
         <div class="gates">
@@ -589,107 +624,210 @@ async function initCapture(){
     img.src = URL.createObjectURL(f);
   });
 
+  let camOk = false;
   try{
     camStream = await navigator.mediaDevices.getUserMedia({
       video:{ facingMode:'user', width:{ideal:960}, height:{ideal:1280} }, audio:false
     });
     video.srcObject = camStream;
+    camOk = true;
+  }catch(err){
+    fallback.classList.add('show');
+    shootBtn.style.display = 'none';
+  }
+  if(!camOk) return;
 
-    /* 페이스아이디 방식 연속 촬영:
-       측정이 진행되는 동안 내부적으로 계속 프레임을 촬영해 품질을 채점하고,
-       100% 도달 시 가장 선명한 한 장을 자동 선택합니다. */
-    const RING_LEN = 676;
-    let progress = 0;
-    let capturing = false;
-    let candidates = [];   // {score, metrics, dataUrl} — 품질 상위 5장만 유지
-    let shotsTotal = 0;
-    let lastShot = 0;
+  /* ---------- 공통: 연속 촬영 후보 관리 ---------- */
+  const RING_LEN = 676;
+  let capturing = false;
+  let candidates = [];   // {score, metrics, dataUrl} — 품질 상위 5장만 유지
+  let shotsTotal = 0;
+  let lastShot = 0;
 
-    const gv = document.createElement('canvas');
-    gv.width = 240; gv.height = 320;
-    const gctx = gv.getContext('2d', {willReadFrequently:true});
-    const capCv = document.createElement('canvas'); // 후보 촬영용 재사용 캔버스
+  const gv = document.createElement('canvas');
+  gv.width = 240; gv.height = 320;
+  const gctx = gv.getContext('2d', {willReadFrequently:true});
+  const capCv = document.createElement('canvas');
 
-    function snapCandidate(){
-      const w = video.videoWidth, h = video.videoHeight;
-      if(!w || !h) return;
-      capCv.width = w; capCv.height = h;
-      const c = capCv.getContext('2d');
-      c.setTransform(-1, 0, 0, 1, w, 0); // 미러 보정
-      c.drawImage(video, 0, 0);
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      const r = analyzeFromSource(capCv, w, h);
-      if(!r.metrics) return;
-      shotsTotal++;
-      const q = r.metrics.sharp * 0.6 + r.metrics.bright * 0.4; // 촬영 품질 점수
-      candidates.push({ score: q, metrics: r.metrics, dataUrl: r.dataUrl });
-      candidates.sort((a,b)=>b.score-a.score);
-      if(candidates.length > 5) candidates.length = 5; // 메모리 절약: 상위 5장만
+  const hintEl = $('#camHint');
+  const ringEl = $('#progressRing');
+  const setRing = p => ringEl && ringEl.setAttribute('stroke-dasharray', `${RING_LEN*p/100} ${RING_LEN}`);
+  const setHint = (t, prog) => {
+    if(!hintEl) return;
+    hintEl.textContent = t;
+    hintEl.classList.toggle('progress', !!prog);
+  };
+
+  function frameQuality(){
+    if(!camStream || video.readyState < 2) return null;
+    gctx.drawImage(video, 0, 0, gv.width, gv.height);
+    const m = analyzeImageData(gctx.getImageData(0,0,gv.width,gv.height));
+    if(!m) return null;
+    const okB = m.raw.meanL > 55 && m.raw.meanL < 230;
+    const okS = m.raw.lapVar > 12;
+    $('#gateBright')?.classList.toggle('ok', okB);
+    $('#gateSharp')?.classList.toggle('ok', okS);
+    return { m, okB, okS };
+  }
+
+  function snapCandidate(){
+    const w = video.videoWidth, h = video.videoHeight;
+    if(!w || !h) return;
+    capCv.width = w; capCv.height = h;
+    const c = capCv.getContext('2d');
+    c.setTransform(-1, 0, 0, 1, w, 0); // 미러 보정
+    c.drawImage(video, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    const r = analyzeFromSource(capCv, w, h);
+    if(!r.metrics) return;
+    shotsTotal++;
+    const q = r.metrics.sharp * 0.6 + r.metrics.bright * 0.4;
+    candidates.push({ score: q, metrics: r.metrics, dataUrl: r.dataUrl });
+    candidates.sort((a,b)=>b.score-a.score);
+    if(candidates.length > 5) candidates.length = 5;
+  }
+
+  function doCapture(){
+    if(capturing) return;
+    capturing = true;
+    if(gateTimer){ clearInterval(gateTimer); gateTimer = null; }
+    if(candidates.length === 0) snapCandidate();
+    const flash = $('#flash');
+    if(flash){ flash.classList.add('on'); setTimeout(()=>flash.classList.remove('on'), 180); }
+    if(navigator.vibrate) navigator.vibrate(60);
+    const best = candidates[0];
+    setTimeout(()=>{
+      if(best) finishCapture({ metrics: best.metrics, dataUrl: best.dataUrl }, shotsTotal);
+      else { capturing = false; toast('촬영에 실패했어요. 다시 시도해주세요.'); }
+    }, 200);
+  }
+  shootBtn.addEventListener('click', doCapture);
+
+  /* ---------- 얼굴 인식 엔진 대기 (최대 4초, 실패 시 기본 모드) ---------- */
+  if(!window.faceLm){
+    setHint('측정 준비 중...');
+    for(let i=0; i<20 && !window.faceLm; i++){
+      if(view !== 'capture' || !camStream) return;
+      await new Promise(r=>setTimeout(r, 200));
     }
+  }
+  if(window.faceLm) runFaceIdMode();
+  else runBasicMode();
 
-    function doCapture(){
-      if(capturing) return;
-      capturing = true;
-      if(gateTimer){ clearInterval(gateTimer); gateTimer = null; }
-      if(candidates.length === 0) snapCandidate(); // 후보가 없으면 현재 프레임이라도
-      const flash = $('#flash');
-      if(flash){ flash.classList.add('on'); setTimeout(()=>flash.classList.remove('on'), 180); }
-      if(navigator.vibrate) navigator.vibrate(60);
-      const best = candidates[0];
-      setTimeout(()=>{
-        if(best) finishCapture({ metrics: best.metrics, dataUrl: best.dataUrl }, shotsTotal);
-        else { capturing = false; toast('촬영에 실패했어요. 다시 시도해주세요.'); }
-      }, 200);
-    }
+  /* ---------- 페이스아이디 모드: 고개 회전 인식 ----------
+     ① 정면 확인(1초) → ② 코로 원을 그리듯 고개를 돌리면
+     돌린 방향의 눈금이 켜지고, 충분히 채우면 자동 완료.
+     정면을 지날 때마다 내부적으로 촬영해 가장 선명한 1장을 저장. */
+  function runFaceIdMode(){
+    const SEG = 12, NEED = 9;        // 12방향 중 9방향 채우면 완료
+    const FRONTAL_R = 0.45;          // 이 미만이면 정면으로 간주 (튜닝 가능)
+    const ROTATE_R  = 0.85;          // 이 이상 돌려야 눈금 인정 (튜닝 가능)
+    let phase = 'align';
+    let alignHold = 0, sumY = 0, sumP = 0;
+    let baseY = 0, baseP = 0;
+    const covered = new Set();
 
     gateTimer = setInterval(()=>{
       if(!camStream || video.readyState < 2 || capturing) return;
-      gctx.drawImage(video, 0, 0, gv.width, gv.height);
-      const m = analyzeImageData(gctx.getImageData(0,0,gv.width,gv.height));
-      if(!m) return;
-
-      const okB = m.raw.meanL > 55 && m.raw.meanL < 230;
-      const okS = m.raw.lapVar > 12;
-      $('#gateBright')?.classList.toggle('ok', okB);
-      $('#gateSharp')?.classList.toggle('ok', okS);
-
-      const hint = $('#camHint');
-      const ring = $('#progressRing');
+      const q = frameQuality();
+      if(!q) return;
       const now = Date.now();
 
-      if(okB && okS){
-        progress = Math.min(100, progress + 5);   // 유지 시 약 3초에 100%
-        if(now - lastShot > 350){ snapCandidate(); lastShot = now; } // 연속 촬영
+      if(!q.okB){
+        setHint(q.m.raw.meanL <= 55 ? '조금 더 밝은 곳으로 이동해주세요' : '빛이 너무 강해요. 방향을 바꿔보세요');
+        return;
+      }
+
+      let lms = null;
+      try{
+        const res = window.faceLm.detectForVideo(video, performance.now());
+        lms = res.faceLandmarks && res.faceLandmarks[0];
+      }catch(e){}
+
+      if(!lms){ setHint('얼굴이 화면에 보이게 해주세요'); return; }
+
+      // 얼굴 크기·위치 (실제 얼굴 좌표 기반)
+      const eyeDist = Math.hypot(lms[263].x - lms[33].x, lms[263].y - lms[33].y);
+      const nose = lms[1];
+      if(eyeDist < 0.13){ setHint('조금 더 가까이 와주세요'); return; }
+      if(eyeDist > 0.36){ setHint('조금 멀리 떨어져주세요'); return; }
+      if(Math.abs(nose.x - 0.5) > 0.16 || nose.y < 0.28 || nose.y > 0.72){
+        setHint('얼굴을 가이드 중앙에 맞춰주세요'); return;
+      }
+
+      // 고개 각도 근사: 좌우 볼 깊이차(좌우), 이마-턱 깊이차(상하)
+      const yawP = (lms[234].z - lms[454].z) * 10;
+      const pitP = (lms[10].z  - lms[152].z) * 10;
+
+      if(phase === 'align'){
+        alignHold++; sumY += yawP; sumP += pitP;
+        const p = Math.min(20, Math.round(alignHold/7*20));
+        setRing(p);
+        setHint(`정면 확인 중 ${Math.round(p*5)}%`, true);
+        if(now - lastShot > 400){ snapCandidate(); lastShot = now; }
+        if(alignHold >= 7){
+          baseY = sumY/alignHold; baseP = sumP/alignHold; // 이 사용자의 정면 기준값
+          phase = 'rotate';
+          if(navigator.vibrate) navigator.vibrate(30);
+        }
+        return;
+      }
+
+      // rotate 단계
+      const dy = yawP - baseY, dp = pitP - baseP;
+      const r = Math.hypot(dy, dp);
+
+      if(r < FRONTAL_R && q.okS && now - lastShot > 400){
+        snapCandidate(); lastShot = now; // 정면을 지날 때마다 촬영
+      }
+      if(r > ROTATE_R){
+        // 화면이 거울 반전이므로 좌우를 뒤집어 사용자가 보는 방향과 일치시킴
+        const deg = Math.atan2(dp, -dy) * 180/Math.PI;
+        const idx = Math.round(((deg + 90 + 360) % 360) / 30) % SEG;
+        if(!covered.has(idx)){
+          covered.add(idx);
+          document.querySelector(`#ticks line[data-tick="${idx}"]`)?.classList.add('lit');
+          if(navigator.vibrate) navigator.vibrate(15);
+        }
+      }
+
+      const p = 20 + Math.min(80, Math.round(covered.size/NEED*80));
+      setRing(p);
+      setHint(`코로 원을 그리듯 천천히 고개를 돌려주세요 · ${covered.size}/${NEED} (${shotsTotal}장 분석됨)`, true);
+
+      if(covered.size >= NEED){ setRing(100); doCapture(); }
+    }, 150);
+  }
+
+  /* ---------- 기본 모드: 얼굴 인식 엔진을 못 불러온 환경용 ---------- */
+  function runBasicMode(){
+    let progress = 0;
+    gateTimer = setInterval(()=>{
+      if(!camStream || video.readyState < 2 || capturing) return;
+      const q = frameQuality();
+      if(!q) return;
+      const now = Date.now();
+
+      if(q.okB && q.okS){
+        progress = Math.min(100, progress + 5);
+        if(now - lastShot > 350){ snapCandidate(); lastShot = now; }
       }else{
         progress = Math.max(0, progress - 10);
       }
+      setRing(progress);
 
-      if(ring) ring.setAttribute('stroke-dasharray', `${RING_LEN*progress/100} ${RING_LEN}`);
-
-      if(hint){
-        if(progress > 0 && okB && okS){
-          hint.textContent = `● 측정 중 ${progress}% · ${shotsTotal}장 분석됨`;
-          hint.classList.add('progress');
-        }else if(!okB){
-          hint.textContent = m.raw.meanL <= 55 ? '조금 더 밝은 곳으로 이동해주세요' : '빛이 너무 강해요. 방향을 바꿔보세요';
-          hint.classList.remove('progress');
-        }else if(!okS){
-          hint.textContent = '카메라를 고정하고 얼굴을 가이드에 맞춰주세요';
-          hint.classList.remove('progress');
-        }else{
-          hint.textContent = '얼굴을 가이드 안에 맞춰주세요';
-          hint.classList.remove('progress');
-        }
+      if(progress > 0 && q.okB && q.okS){
+        setHint(`● 측정 중 ${progress}% · ${shotsTotal}장 분석됨`, true);
+      }else if(!q.okB){
+        setHint(q.m.raw.meanL <= 55 ? '조금 더 밝은 곳으로 이동해주세요' : '빛이 너무 강해요. 방향을 바꿔보세요');
+      }else if(!q.okS){
+        setHint('카메라를 고정하고 얼굴을 가이드에 맞춰주세요');
+      }else{
+        setHint('얼굴을 가이드 안에 맞춰주세요');
       }
 
       if(progress >= 100) doCapture();
     }, 150);
-
-    // 수동 촬영: 지금까지 찍힌 것 중 최적 1장으로 즉시 완료
-    shootBtn.addEventListener('click', doCapture);
-  }catch(err){
-    fallback.classList.add('show');
-    shootBtn.style.display = 'none';
   }
 }
 
