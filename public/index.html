@@ -107,8 +107,15 @@
   .cam-wrap .guide{position:absolute;inset:0;pointer-events:none}
   .cam-hint{
     position:absolute;top:14px;left:0;right:0;text-align:center;
-    color:#fff;font-size:13px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.5);
+    color:#fff;font-size:14px;font-weight:700;text-shadow:0 1px 6px rgba(0,0,0,.6);
+    transition:color .2s;
   }
+  .cam-hint.progress{color:#B8AFFF;font-size:16px}
+  .flash{
+    position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;
+    transition:opacity .12s ease;
+  }
+  .flash.on{opacity:.85}
   .gates{
     position:absolute;bottom:12px;left:12px;right:12px;
     display:flex;gap:8px;justify-content:center;
@@ -120,12 +127,6 @@
   }
   .gate.ok{color:#5CE6B0}
   .gate .dot{width:7px;height:7px;border-radius:99px;background:currentColor}
-  .countdown{
-    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
-    background:rgba(20,18,31,.35);
-  }
-  .countdown.show{display:flex}
-  .countdown b{font-size:88px;font-weight:800;color:#fff;text-shadow:0 2px 20px rgba(0,0,0,.4)}
   .cam-fallback{padding:24px;text-align:center;color:#B8B2DE;font-size:13px;line-height:1.6;
     position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px}
   .cam-fallback.show{display:flex}
@@ -201,6 +202,55 @@
     transition:all .25s ease;z-index:99;white-space:nowrap;
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ---------- 홈 화면 설치 안내 ---------- */
+  .install-banner{
+    display:none;align-items:center;gap:12px;
+    background:var(--violet);color:#fff;border-radius:var(--radius);
+    padding:14px 16px;margin-bottom:14px;
+  }
+  .install-banner.show{display:flex}
+  .install-banner .ib-icon{
+    width:40px;height:40px;border-radius:11px;background:#fff;flex:0 0 40px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--violet);font-weight:800;font-size:20px;
+  }
+  .install-banner .ib-text{flex:1;font-size:13px;line-height:1.4}
+  .install-banner .ib-text b{display:block;font-size:14px}
+  .install-banner button{
+    border:none;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;
+    padding:9px 14px;border-radius:10px;background:#fff;color:var(--violet-deep);
+  }
+  .install-banner .ib-close{
+    background:none;color:rgba(255,255,255,.7);padding:6px;font-size:16px;
+  }
+  .ios-modal{
+    position:absolute;inset:0;z-index:200;display:none;
+    align-items:flex-end;justify-content:center;
+    background:rgba(29,27,46,.5);
+  }
+  .ios-modal.show{display:flex}
+  .ios-sheet{
+    width:100%;background:#fff;border-radius:22px 22px 0 0;
+    padding:24px 22px calc(24px + env(safe-area-inset-bottom));
+  }
+  .ios-sheet h3{font-size:17px;font-weight:800;margin-bottom:6px}
+  .ios-sheet p{font-size:13px;color:var(--ink-soft);margin-bottom:16px;line-height:1.5}
+  .ios-step{
+    display:flex;align-items:center;gap:12px;padding:12px 0;
+    border-bottom:1px solid var(--line);font-size:14px;line-height:1.45;
+  }
+  .ios-step:last-of-type{border-bottom:none}
+  .ios-step .n{
+    flex:0 0 26px;height:26px;border-radius:99px;background:var(--violet-soft);
+    color:var(--violet-deep);font-weight:800;font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .ios-step .share-ico{
+    display:inline-block;vertical-align:-3px;width:17px;height:17px;
+    stroke:var(--violet);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;
+  }
+  .ios-sheet .btn{margin-top:18px}
   @media (prefers-reduced-motion: reduce){
     *{transition:none!important;animation:none!important}
   }
@@ -226,6 +276,20 @@
   </nav>
 
   <div class="toast" id="toast"></div>
+
+  <div class="ios-modal" id="iosModal">
+    <div class="ios-sheet">
+      <h3>홈 화면에 Youth 추가하기</h3>
+      <p>앱처럼 아이콘으로 바로 열 수 있어요. 매일 기록하려면 꼭 추가해두세요.</p>
+      <div class="ios-step"><span class="n">1</span>
+        <span>하단의 공유 버튼
+          <svg class="share-ico" viewBox="0 0 24 24"><path d="M12 3v13"/><path d="M8 7l4-4 4 4"/><rect x="4" y="11" width="16" height="10" rx="2"/></svg>
+          을 누르세요</span></div>
+      <div class="ios-step"><span class="n">2</span><span>목록을 내려서 <b>"홈 화면에 추가"</b>를 누르세요</span></div>
+      <div class="ios-step"><span class="n">3</span><span>오른쪽 위 <b>"추가"</b>를 누르면 끝!</span></div>
+      <button class="btn" onclick="closeIosModal()">확인했어요</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -420,6 +484,13 @@ function renderHome(){
     <h1>오늘의 당신</h1>
     <p class="sub" style="margin:4px 0 18px">${fmtFull(Date.now())} · 작은 변화가 쌓여 큰 차이를 만듭니다</p>
 
+    <div class="install-banner ${shouldShowInstall() ? 'show' : ''}" id="installBanner">
+      <div class="ib-icon">Y</div>
+      <div class="ib-text"><b>홈 화면에 추가하세요</b>앱처럼 아이콘으로 바로 열 수 있어요</div>
+      <button onclick="installApp()">추가</button>
+      <button class="ib-close" onclick="dismissInstall()" aria-label="닫기">✕</button>
+    </div>
+
     <div class="card" style="text-align:center">
       <div class="score-ring">
         <svg width="150" height="150">
@@ -473,20 +544,23 @@ function renderCapture(){
         <svg class="guide" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
           <defs><mask id="hole"><rect width="300" height="400" fill="#fff"/><ellipse cx="150" cy="200" rx="92" ry="122" fill="#000"/></mask></defs>
           <rect width="300" height="400" fill="rgba(20,18,31,.45)" mask="url(#hole)"/>
-          <ellipse cx="150" cy="200" rx="92" ry="122" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="6 6"/>
+          <ellipse cx="150" cy="200" rx="92" ry="122" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-dasharray="6 6"/>
+          <ellipse id="progressRing" cx="150" cy="200" rx="92" ry="122" fill="none"
+            stroke="#8B7FF5" stroke-width="5" stroke-linecap="round"
+            stroke-dasharray="0 676" transform="rotate(-90 150 200)"/>
         </svg>
-        <div class="cam-hint">얼굴을 가이드 안에 맞춰주세요</div>
+        <div class="cam-hint" id="camHint">얼굴을 가이드 안에 맞춰주세요</div>
         <div class="gates">
           <div class="gate" id="gateBright"><span class="dot"></span>밝기</div>
           <div class="gate" id="gateSharp"><span class="dot"></span>선명도</div>
         </div>
-        <div class="countdown" id="countdown"><b>3</b></div>
+        <div class="flash" id="flash"></div>
         <div class="cam-fallback" id="camFallback">
           카메라를 사용할 수 없는 환경이에요.<br>사진을 직접 선택해 기록할 수 있습니다.
           <label>사진 선택하기<input type="file" id="fileInput" accept="image/*" capture="user" hidden></label>
         </div>
       </div>
-      <button class="btn" id="shootBtn" disabled>3초 카운트 후 촬영</button>
+      <button class="btn ghost" id="shootBtn">바로 촬영하기 (자동 촬영을 기다리지 않을 때)</button>
     </div>
 
     <div class="review" id="review">
@@ -521,42 +595,105 @@ async function initCapture(){
     });
     video.srcObject = camStream;
 
-    // 실시간 품질 게이트 — 정규화 기술의 핵심
+    /* 페이스아이디 방식 연속 촬영:
+       측정이 진행되는 동안 내부적으로 계속 프레임을 촬영해 품질을 채점하고,
+       100% 도달 시 가장 선명한 한 장을 자동 선택합니다. */
+    const RING_LEN = 676;
+    let progress = 0;
+    let capturing = false;
+    let candidates = [];   // {score, metrics, dataUrl} — 품질 상위 5장만 유지
+    let shotsTotal = 0;
+    let lastShot = 0;
+
     const gv = document.createElement('canvas');
-    gv.width = 160; gv.height = 214;
+    gv.width = 240; gv.height = 320;
     const gctx = gv.getContext('2d', {willReadFrequently:true});
+    const capCv = document.createElement('canvas'); // 후보 촬영용 재사용 캔버스
+
+    function snapCandidate(){
+      const w = video.videoWidth, h = video.videoHeight;
+      if(!w || !h) return;
+      capCv.width = w; capCv.height = h;
+      const c = capCv.getContext('2d');
+      c.setTransform(-1, 0, 0, 1, w, 0); // 미러 보정
+      c.drawImage(video, 0, 0);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      const r = analyzeFromSource(capCv, w, h);
+      if(!r.metrics) return;
+      shotsTotal++;
+      const q = r.metrics.sharp * 0.6 + r.metrics.bright * 0.4; // 촬영 품질 점수
+      candidates.push({ score: q, metrics: r.metrics, dataUrl: r.dataUrl });
+      candidates.sort((a,b)=>b.score-a.score);
+      if(candidates.length > 5) candidates.length = 5; // 메모리 절약: 상위 5장만
+    }
+
+    function doCapture(){
+      if(capturing) return;
+      capturing = true;
+      if(gateTimer){ clearInterval(gateTimer); gateTimer = null; }
+      if(candidates.length === 0) snapCandidate(); // 후보가 없으면 현재 프레임이라도
+      const flash = $('#flash');
+      if(flash){ flash.classList.add('on'); setTimeout(()=>flash.classList.remove('on'), 180); }
+      if(navigator.vibrate) navigator.vibrate(60);
+      const best = candidates[0];
+      setTimeout(()=>{
+        if(best) finishCapture({ metrics: best.metrics, dataUrl: best.dataUrl }, shotsTotal);
+        else { capturing = false; toast('촬영에 실패했어요. 다시 시도해주세요.'); }
+      }, 200);
+    }
+
     gateTimer = setInterval(()=>{
-      if(!camStream || video.readyState < 2) return;
+      if(!camStream || video.readyState < 2 || capturing) return;
       gctx.drawImage(video, 0, 0, gv.width, gv.height);
       const m = analyzeImageData(gctx.getImageData(0,0,gv.width,gv.height));
       if(!m) return;
-      const okB = m.raw.meanL > 70 && m.raw.meanL < 210;
-      const okS = m.raw.lapVar > 25;
+
+      const okB = m.raw.meanL > 55 && m.raw.meanL < 230;
+      const okS = m.raw.lapVar > 12;
       $('#gateBright')?.classList.toggle('ok', okB);
       $('#gateSharp')?.classList.toggle('ok', okS);
-      shootBtn.disabled = !(okB && okS);
-      shootBtn.textContent = (okB && okS) ? '3초 카운트 후 촬영' : '밝은 곳에서 카메라를 고정해주세요';
-    }, 500);
 
-    shootBtn.addEventListener('click', async ()=>{
-      const cd = $('#countdown'); const num = cd.querySelector('b');
-      cd.classList.add('show');
-      for(let i=3;i>=1;i--){ num.textContent = i; await new Promise(r=>setTimeout(r, 800)); }
-      cd.classList.remove('show');
-      const w = video.videoWidth, h = video.videoHeight;
-      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
-      const cx = cv.getContext('2d');
-      cx.translate(w,0); cx.scale(-1,1);
-      cx.drawImage(video,0,0);
-      finishCapture(analyzeFromSource(cv, w, h));
-    });
+      const hint = $('#camHint');
+      const ring = $('#progressRing');
+      const now = Date.now();
+
+      if(okB && okS){
+        progress = Math.min(100, progress + 5);   // 유지 시 약 3초에 100%
+        if(now - lastShot > 350){ snapCandidate(); lastShot = now; } // 연속 촬영
+      }else{
+        progress = Math.max(0, progress - 10);
+      }
+
+      if(ring) ring.setAttribute('stroke-dasharray', `${RING_LEN*progress/100} ${RING_LEN}`);
+
+      if(hint){
+        if(progress > 0 && okB && okS){
+          hint.textContent = `● 측정 중 ${progress}% · ${shotsTotal}장 분석됨`;
+          hint.classList.add('progress');
+        }else if(!okB){
+          hint.textContent = m.raw.meanL <= 55 ? '조금 더 밝은 곳으로 이동해주세요' : '빛이 너무 강해요. 방향을 바꿔보세요';
+          hint.classList.remove('progress');
+        }else if(!okS){
+          hint.textContent = '카메라를 고정하고 얼굴을 가이드에 맞춰주세요';
+          hint.classList.remove('progress');
+        }else{
+          hint.textContent = '얼굴을 가이드 안에 맞춰주세요';
+          hint.classList.remove('progress');
+        }
+      }
+
+      if(progress >= 100) doCapture();
+    }, 150);
+
+    // 수동 촬영: 지금까지 찍힌 것 중 최적 1장으로 즉시 완료
+    shootBtn.addEventListener('click', doCapture);
   }catch(err){
     fallback.classList.add('show');
     shootBtn.style.display = 'none';
   }
 }
 
-function finishCapture({metrics, dataUrl}){
+function finishCapture({metrics, dataUrl}, shots){
   if(!metrics){ toast('분석할 수 없는 이미지예요. 다시 시도해주세요.'); return; }
   stopCamera();
   pendingCapture = { metrics, dataUrl };
@@ -564,6 +701,9 @@ function finishCapture({metrics, dataUrl}){
   const rv = $('#review'); rv.classList.add('show');
   $('#reviewImg').src = dataUrl;
   $('#metricPreview').innerHTML = `
+    ${shots > 1 ? `<div class="mp" style="grid-column:1/-1;background:var(--violet-soft);border-color:var(--violet-soft)">
+      <div class="k" style="color:var(--violet-deep)">자동 선택</div>
+      <div style="font-size:13px;font-weight:600;color:var(--violet-deep)">촬영된 ${shots}장 중 가장 선명한 1장을 골랐어요</div></div>` : ''}
     <div class="mp"><div class="k">종합 점수</div><div class="v" style="color:var(--violet)">${metrics.score}</div></div>
     <div class="mp"><div class="k">피부톤 균일도</div><div class="v">${metrics.tone}</div></div>
     <div class="mp"><div class="k">질감 (모공 근사)</div><div class="v">${metrics.texture}</div></div>
@@ -713,9 +853,55 @@ function initCompare(){
   refresh();
 }
 
+/* ---------- 홈 화면 설치 ---------- */
+let deferredInstall = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstall = e;           // 안드로이드/크롬: 네이티브 설치 프롬프트 보관
+  const b = $('#installBanner');
+  if (b && shouldShowInstall()) b.classList.add('show');
+});
+
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true; // iOS
+}
+function isIos(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function shouldShowInstall(){
+  if (isStandalone()) return false;                          // 이미 설치됨
+  if (localStorage.getItem('youth_install_dismissed')) return false;
+  return isIos() || deferredInstall !== null;
+}
+async function installApp(){
+  if (deferredInstall){
+    deferredInstall.prompt();                                // 안드로이드: 바로 설치 팝업
+    const { outcome } = await deferredInstall.userChoice;
+    if (outcome === 'accepted'){
+      $('#installBanner')?.classList.remove('show');
+      toast('설치됐어요! 홈 화면에서 열어보세요 ✓');
+    }
+    deferredInstall = null;
+  } else if (isIos()){
+    $('#iosModal').classList.add('show');                    // 아이폰: 안내 모달
+  }
+}
+function dismissInstall(){
+  localStorage.setItem('youth_install_dismissed', '1');
+  $('#installBanner')?.classList.remove('show');
+}
+function closeIosModal(){
+  $('#iosModal').classList.remove('show');
+}
+
 /* ---------- 시작 ---------- */
 window.go = go;
 window.setMetric = setMetric;
+window.installApp = installApp;
+window.dismissInstall = dismissInstall;
+window.closeIosModal = closeIosModal;
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/sw.js').catch(()=>{});
